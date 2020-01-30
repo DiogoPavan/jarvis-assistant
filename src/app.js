@@ -3,6 +3,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const AssistantV2 = require('ibm-watson/assistant/v2');
 const { IamAuthenticator } = require('ibm-watson/auth');
+
 let sessionId = null;
 
 const app = express();
@@ -27,6 +28,9 @@ const sendMessage = async (data, response) => {
       input: {
         message_type,
         text,
+        'options': {
+          'return_context': true
+        }
       },
     })
     .then(res => {
