@@ -28,9 +28,9 @@ const sendMessage = async (data, response) => {
       input: {
         message_type,
         text,
-        'options': {
-          'return_context': true
-        }
+        options: {
+          return_context: true,
+        },
       },
     })
     .then(res => {
@@ -44,24 +44,41 @@ const sendMessage = async (data, response) => {
     });
 };
 
-const createSession = (data, response) => {
+const createSession = response => {
   assistant
     .createSession({
       assistantId: process.env.ASSISTANT_ID,
     })
     .then(res => {
       sessionId = res.result.session_id;
-      sendMessage(data, response);
+    })
+    .catch(err => {
+      console.log(err);
+      sessionId = null;
+      response.json(err);
+    });
+};
+
+app.get('/session', (req, response) => {
+  assistant
+    .createSession({
+      assistantId: process.env.ASSISTANT_ID,
+    })
+    .then(res => {
+      sessionId = res.result.session_id;
+      response.json({ sessionId });
     })
     .catch(err => {
       console.log(err);
       response.json(err);
     });
-};
+});
 
 app.post('/conversation/', (req, response) => {
-  if (!sessionId) {
-    createSession(req.body, response);
+  const { session_id } = req.headers;
+
+  if (!session_id) {
+    return response.status(401).json({ message: 'Sessão expirada' });
   } else {
     sendMessage(req.body, response);
   }
