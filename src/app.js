@@ -1,89 +1,74 @@
 require('dotenv/config');
 const express = require('express');
-const bodyParser = require('body-parser');
-const AssistantV2 = require('ibm-watson/assistant/v2');
-const { IamAuthenticator } = require('ibm-watson/auth');
-
-let sessionId = null;
-
 const app = express();
+const bodyParser = require('body-parser');
+const assistant = require('./assistant');
+
 app.use(bodyParser.json());
 
-const assistant = new AssistantV2({
-  version: '2020-01-27',
-  authenticator: new IamAuthenticator({
-    apikey: process.env.API_KEY,
-  }),
-  url: process.env.ASSISTANT_URL,
-});
-
-const sendMessage = async (data, response) => {
-  const { text, context = {}, message_type = 'text' } = data;
-
-  await assistant
-    .message({
-      assistantId: process.env.ASSISTANT_ID,
-      sessionId,
-      context,
-      input: {
-        message_type,
-        text,
-        options: {
-          return_context: true,
-        },
+const sendMessage = async (data) => {
+  const { sessionId, text, message_type = 'text'} = data;
+  const payload = {
+    assistantId: process.env.ASSISTANT_ID,
+    sessionId,
+    input: {
+      message_type,
+      text,
+      options: {
+        return_context: true,
       },
+    },
+  };
+
+  return assistant
+    .message(payload, (err, res) => {
+      if (err) {
+        console.log(err);
+        return JSON.stringify(err, null, 2);
+      }
+
+      console.log(res);
+      return JSON.stringify(res, null, 2);
     })
-    .then(res => {
-      console.log(JSON.stringify(res, null, 2));
-      response.json(res.result);
-    })
-    .catch(err => {
-      console.log(err);
-      sessionId = null;
-      createSession(data, response);
-    });
 };
 
-const createSession = response => {
-  assistant
-    .createSession({
-      assistantId: process.env.ASSISTANT_ID,
-    })
-    .then(res => {
-      sessionId = res.result.session_id;
-    })
-    .catch(err => {
-      console.log(err);
-      sessionId = null;
-      response.json(err);
-    });
-};
+app.get('/session', (req, res) => {
+  assistant.createSession({
+    assistantId: process.env.ASSISTANT_ID
+  }, 
+  async (error, data) => {
+    if (error) {
+      console.log(error); 
+      return res.send(error);
+    } 
 
-app.get('/session', (req, response) => {
-  assistant
-    .createSession({
-      assistantId: process.env.ASSISTANT_ID,
-    })
-    .then(res => {
-      sessionId = res.result.session_id;
-      response.json({ sessionId });
-    })
-    .catch(err => {
-      console.log(err);
-      response.json(err);
-    });
+    const sessionId = data.result.session_id;
+
+    const message = await sendMessage({
+      sessionId: data.result.session_id,
+      messageType: 'text',
+      text: ''
+    }); 
+
+    const retorno = {
+      sessionId,
+      message: message.result
+    }
+
+    return res.status(200).json(retorno)
+  })
 });
 
-app.post('/conversation/', (req, response) => {
-  const { session_id } = req.headers;
+app.post('/conversation', async (req, res) => {
+  const { sessionId } = req.body;
 
-  if (!session_id) {
-    return response.status(401).json({ message: 'Sessão expirada' });
-  } else {
-    sendMessage(req.body, response);
-  }
+  if (!sessionId) {
+    return res.status(401).json({ message: 'Sessão expirada' });
+  } 
+
+  const message = await sendMessage(req.body); 
+  
+  return sendMessage(res.status(200).json(message));
 });
 
-app.listen(process.env.APP_PORT, () =>
-  console.log(`Running on port ${process.env.APP_PORT}`)
-);
+module.exports = app;
