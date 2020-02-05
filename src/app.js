@@ -13,8 +13,50 @@ app.use(
   })
 );
 
-const sendMessage = async data => {
-  const { sessionId, text, message_type = 'text' } = data;
+app.get('/session', (req, res) => {
+  assistant.createSession(
+    {
+      assistantId: process.env.ASSISTANT_ID,
+    },
+    (error, data) => {
+      if (error) {
+        return res.send(error);
+      }
+
+      const sessionId = data.result.session_id;
+      const payload = {
+        assistantId: process.env.ASSISTANT_ID,
+        sessionId,
+        input: {
+          message_type: 'text',
+          text: '',
+        },
+      };
+
+      assistant.message(payload, (err, response) => {
+        if (err) {
+          sessionId = null;
+          return res.status(500).json({ message: 'Erro no servidor' });
+        }
+
+        const retorno = {
+          sessionId,
+          message: response.result,
+        };
+
+        return res.status(200).json(retorno);
+      });
+    }
+  );
+});
+
+app.post('/conversation', (req, res) => {
+  const { sessionId, text, message_type = 'text' } = req.body;
+
+  if (!sessionId) {
+    return res.status(401).json({ message: 'Sessão expirada' });
+  }
+
   const payload = {
     assistantId: process.env.ASSISTANT_ID,
     sessionId,
@@ -24,56 +66,14 @@ const sendMessage = async data => {
     },
   };
 
-  return assistant.message(payload, (err, res) => {
+  assistant.message(payload, (err, response) => {
     if (err) {
-      console.log(err);
-      return JSON.stringify(err, null, 2);
+      sessionId = null;
+      return res.status(500).json({ message: 'Erro no servidor' });
     }
 
-    console.log(res);
-    return JSON.stringify(res, null, 2);
+    return res.status(200).json(response.result);
   });
-};
-
-app.get('/session', (req, res) => {
-  return assistant.createSession(
-    {
-      assistantId: process.env.ASSISTANT_ID,
-    },
-    async (error, data) => {
-      if (error) {
-        console.log(error);
-        return res.send(error);
-      }
-
-      const sessionId = data.result.session_id;
-
-      const message = await sendMessage({
-        sessionId: data.result.session_id,
-        messageType: 'text',
-        text: '',
-      });
-
-      const retorno = {
-        sessionId,
-        message: message.result,
-      };
-
-      return res.status(200).json(retorno);
-    }
-  );
-});
-
-app.post('/conversation', async (req, res) => {
-  const { sessionId } = req.body;
-
-  if (!sessionId) {
-    return res.status(401).json({ message: 'Sessão expirada' });
-  }
-
-  const message = await sendMessage(req.body);
-
-  return res.status(200).json(message);
 });
 
 module.exports = app;
